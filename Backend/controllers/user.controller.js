@@ -1,6 +1,8 @@
 const userModel= require("../models/user.model.js")
 const userService=require("../services/user.service");
-const {validationResult}=require("express-validator")
+const {validationResult}=require("express-validator");
+const BlacklistTokenModel=require("../models/blacklistToken.model.js");
+const blacklistTokenModel = require("../models/blacklistToken.model.js");
 
 
 module.exports.registerUser= async (req,res,next)=>{
@@ -24,4 +26,55 @@ module.exports.registerUser= async (req,res,next)=>{
     const token= await user.generateAuthToken();
 
     res.status(201).json({ token, user });
+}
+
+module.exports.loginUser= async (req, res, next)=>{
+
+    try{
+        const error=validationResult(req);
+        if(!error.isEmpty()){
+            return res.status(400).json({
+            errors: error.array()
+            });
+        }
+
+        const {email, password}=req.body;
+
+        const user = await userModel.findOne({ email }).select("+password");
+        if(!user){
+            return res.status(400).json({
+                message: "wrong email"
+            })
+        }
+
+        const pass= await user.comparePassword(password);
+        if(!pass){
+            return res.status(400).json({
+                message: "wrong password"
+            })
+        }
+
+
+        const token= await user.generateAuthToken();
+
+       res.cookie("token", token, {
+            httpOnly: true
+       });
+        res.status(200).json({token, user})
+    }
+    catch(error){
+        return res.status(500).json(error);
+    }
+}
+
+module.exports.getUserProfile= async (req,res,next)=>{
+    return res.status(200).json(req.user);
+}
+
+module.exports.logoutUser= async (req,res, next)=>{
+    res.clearCookie('token');
+    const token= req.cookies?.token ||(req.headers.authorization && req.headers.authorization.split(" ")[1]);
+
+    await blacklistTokenModel.create({token});
+    res.status(200).json({message: "Log out"});
 }
